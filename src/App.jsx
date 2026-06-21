@@ -235,8 +235,15 @@ export default function App() {
     }
 
     const onSuccess = (pos) => {
-      const { latitude: lat, longitude: lng, accuracy } = pos.coords;
-      setGps({ lat, lng, accuracy: Math.round(accuracy) });
+      const { latitude: lat, longitude: lng, accuracy, speed: spd, heading: hdg, altitude: alt } = pos.coords;
+      setGps({
+        lat, lng,
+        accuracy: Math.round(accuracy),
+        speedMs: spd,                                      // m/s or null
+        speedKmh: spd != null ? spd * 3.6 : null,         // km/h
+        heading: hdg,                                      // degrees 0-360 or null
+        altitude: alt != null ? Math.round(alt) : null,   // metres or null
+      });
       setGpsStatus("tracking");
       setGpsError(null);
       setLastUpdate(new Date());
@@ -354,10 +361,162 @@ export default function App() {
         {/* GPS coords row */}
         {gps && (
           <div style={{ fontSize:10, color:"#4b5563", marginTop:4 }}>
-            {gps.lat.toFixed(5)}°N · {gps.lng.toFixed(5)}°E · accuracy ±{gps.accuracy}m · updates every ~60s
+            {gps.lat.toFixed(5)}°N · {gps.lng.toFixed(5)}°E · ±{gps.accuracy}m · updated {lastUpdateStr}
           </div>
         )}
       </div>
+
+      {/* ── LIVE TELEMETRY DASHBOARD ── */}
+      {gps && (
+        <div style={{
+          background:"#0f172a",
+          border:"1px solid #1e293b",
+          borderRadius:14, padding:"14px 16px", marginBottom:14,
+        }}>
+          <div style={{fontSize:10,color:"#6b7280",letterSpacing:2,textTransform:"uppercase",marginBottom:12}}>
+            🛰️ Live Train Telemetry
+          </div>
+          <div style={{display:"grid", gridTemplateColumns:"repeat(3,1fr)", gap:10}}>
+
+            {/* SPEED */}
+            <div style={{background:"#111827",borderRadius:10,padding:"12px 10px",textAlign:"center",border:"1px solid #1f2937"}}>
+              <div style={{fontSize:9,color:"#6b7280",letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>Speed</div>
+              {gps.speedKmh != null && gps.speedKmh > 0.5 ? (
+                <>
+                  <div style={{
+                    fontSize:30, fontWeight:700, lineHeight:1,
+                    color: gps.speedKmh > 100 ? "#f59e0b" : gps.speedKmh > 50 ? "#22c55e" : "#94a3b8",
+                    transition:"color 0.5s",
+                  }}>
+                    {Math.round(gps.speedKmh)}
+                  </div>
+                  <div style={{fontSize:10,color:"#6b7280",marginTop:2}}>km/h</div>
+                  {/* Speed bar */}
+                  <div style={{marginTop:8,background:"#1f2937",borderRadius:3,height:4,overflow:"hidden"}}>
+                    <div style={{
+                      height:"100%", borderRadius:3,
+                      background: gps.speedKmh > 100 ? "#f59e0b" : "#22c55e",
+                      width:`${Math.min(100,(gps.speedKmh/160)*100)}%`,
+                      transition:"width 0.5s",
+                    }}/>
+                  </div>
+                  <div style={{fontSize:8,color:"#4b5563",marginTop:3}}>max ~160 km/h</div>
+                </>
+              ) : (
+                <>
+                  <div style={{fontSize:24,marginTop:4}}>🛑</div>
+                  <div style={{fontSize:10,color:"#6b7280",marginTop:4}}>
+                    {gps.speedKmh != null ? "Stopped" : "No speed data"}
+                  </div>
+                  <div style={{fontSize:8,color:"#4b5563",marginTop:2}}>
+                    {gps.speedKmh != null ? "(GPS needs movement)" : "(Android/desktop only)"}
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* HEADING / DIRECTION */}
+            <div style={{background:"#111827",borderRadius:10,padding:"12px 10px",textAlign:"center",border:"1px solid #1f2937"}}>
+              <div style={{fontSize:9,color:"#6b7280",letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>Heading</div>
+              {gps.heading != null && gps.speedKmh > 1 ? (
+                <>
+                  {/* Compass rose */}
+                  <div style={{position:"relative",width:52,height:52,margin:"0 auto"}}>
+                    <svg viewBox="0 0 52 52" width={52} height={52}>
+                      <circle cx={26} cy={26} r={24} fill="#1f2937" stroke="#374151" strokeWidth={1}/>
+                      {["N","E","S","W"].map((d,i)=>(
+                        <text key={d} x={26+22*Math.sin(i*Math.PI/2)} y={26-22*Math.cos(i*Math.PI/2)+3.5}
+                          textAnchor="middle" fontSize={7} fill={d==="N"?"#ef4444":"#6b7280"} fontFamily="monospace">{d}</text>
+                      ))}
+                      {/* Arrow */}
+                      <g transform={`rotate(${gps.heading},26,26)`}>
+                        <polygon points="26,6 23,26 26,22 29,26" fill="#f59e0b"/>
+                        <polygon points="26,46 23,26 26,30 29,26" fill="#374151"/>
+                      </g>
+                    </svg>
+                  </div>
+                  <div style={{fontSize:13,fontWeight:700,color:"#f59e0b",marginTop:4}}>{Math.round(gps.heading)}°</div>
+                  <div style={{fontSize:9,color:"#6b7280"}}>
+                    {["N","NNE","NE","ENE","E","ESE","SE","SSE","S","SSW","SW","WSW","W","WNW","NW","NNW"]
+                      [Math.round(gps.heading/22.5)%16]}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{fontSize:24,marginTop:4}}>🧭</div>
+                  <div style={{fontSize:10,color:"#6b7280",marginTop:4}}>No heading</div>
+                  <div style={{fontSize:8,color:"#4b5563",marginTop:2}}>(needs movement)</div>
+                </>
+              )}
+            </div>
+
+            {/* ALTITUDE + NEXT STATION ETA */}
+            <div style={{background:"#111827",borderRadius:10,padding:"12px 10px",textAlign:"center",border:"1px solid #1f2937"}}>
+              <div style={{fontSize:9,color:"#6b7280",letterSpacing:1,textTransform:"uppercase",marginBottom:6}}>Altitude</div>
+              {gps.altitude != null ? (
+                <>
+                  <div style={{fontSize:28,fontWeight:700,lineHeight:1,color:"#818cf8"}}>{gps.altitude}</div>
+                  <div style={{fontSize:10,color:"#6b7280",marginTop:2}}>metres asl</div>
+                  <div style={{fontSize:8,color:"#4b5563",marginTop:6}}>
+                    {gps.altitude > 400 ? "⛰️ Highland" : gps.altitude > 100 ? "🌄 Mid" : "🌾 Plains"}
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div style={{fontSize:24,marginTop:4}}>⛰️</div>
+                  <div style={{fontSize:10,color:"#6b7280",marginTop:4}}>No altitude</div>
+                </>
+              )}
+            </div>
+          </div>
+
+          {/* Second row: KM remaining + ETA + GPS accuracy */}
+          <div style={{display:"grid",gridTemplateColumns:"repeat(3,1fr)",gap:10,marginTop:10}}>
+
+            {/* KM to Bangkok */}
+            <div style={{background:"#111827",borderRadius:10,padding:"10px",textAlign:"center",border:"1px solid #1f2937"}}>
+              <div style={{fontSize:9,color:"#6b7280",letterSpacing:1,textTransform:"uppercase",marginBottom:4}}>To Bangkok</div>
+              <div style={{fontSize:22,fontWeight:700,color:"#e2e8f0"}}>{Math.max(0,TOTAL_KM-Math.round(currentKm))}</div>
+              <div style={{fontSize:9,color:"#6b7280"}}>km remaining</div>
+            </div>
+
+            {/* ETA to Bangkok using live speed or fallback */}
+            <div style={{background:"#111827",borderRadius:10,padding:"10px",textAlign:"center",border:"1px solid #1f2937"}}>
+              <div style={{fontSize:9,color:"#6b7280",letterSpacing:1,textTransform:"uppercase",marginBottom:4}}>ETA Bangkok</div>
+              {(() => {
+                const kmLeft = Math.max(0, TOTAL_KM - currentKm);
+                const spd = (gps.speedKmh != null && gps.speedKmh > 5) ? gps.speedKmh : TRAIN_KMH;
+                const minsLeft = Math.round((kmLeft / spd) * 60);
+                const hrs = Math.floor(minsLeft / 60), mins = minsLeft % 60;
+                const eta = new Date(Date.now() + minsLeft * 60000);
+                return (
+                  <>
+                    <div style={{fontSize:16,fontWeight:700,color:"#10b981"}}>{hrs}h {mins}m</div>
+                    <div style={{fontSize:9,color:"#6b7280",marginTop:2}}>
+                      ~{eta.toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"})}
+                    </div>
+                    <div style={{fontSize:8,color:"#4b5563",marginTop:1}}>
+                      {gps.speedKmh != null && gps.speedKmh > 5 ? "live speed" : "avg 65 km/h"}
+                    </div>
+                  </>
+                );
+              })()}
+            </div>
+
+            {/* GPS accuracy */}
+            <div style={{background:"#111827",borderRadius:10,padding:"10px",textAlign:"center",border:"1px solid #1f2937"}}>
+              <div style={{fontSize:9,color:"#6b7280",letterSpacing:1,textTransform:"uppercase",marginBottom:4}}>GPS Accuracy</div>
+              <div style={{fontSize:22,fontWeight:700,color:gps.accuracy<20?"#22c55e":gps.accuracy<50?"#f59e0b":"#ef4444"}}>
+                ±{gps.accuracy}
+              </div>
+              <div style={{fontSize:9,color:"#6b7280"}}>metres</div>
+              <div style={{fontSize:8,color:"#4b5563",marginTop:2}}>
+                {gps.accuracy<20?"Excellent":gps.accuracy<50?"Good":gps.accuracy<100?"Fair":"Poor"}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── DEAD ZONE COUNTDOWN ── */}
       {inDeadZone ? (
